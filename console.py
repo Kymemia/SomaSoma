@@ -2,7 +2,6 @@
 
 """This is the console module for our website"""
 
-
 import json
 import os
 from datetime import datetime, timedelta
@@ -29,7 +28,7 @@ class NotesCommand:
         self.notes.append(note)
         print(f"Note '{title}' created.")
 
-    def edit_note(self, index, new_title, content):
+    def edit_note(self, index, new_title, new_content):
         """This method allows a user to edit a note
         by accessing the following parameters listed
         in the brackets
@@ -37,7 +36,7 @@ class NotesCommand:
         index => unique position of the particular note to edit
         new_title => this is the title of the new edited note
                       (can still be the same title though)
-        content => new data that'll ideally be inserted in the note"""
+        new_content => new data that'll ideally be inserted in the note"""
         try:
             note = self.notes[index - 1]
             note.title = new_title
@@ -77,7 +76,7 @@ class NotesCommand:
 
     def load_notes(self):
         """This method allows a user to load their notes"""
-        if os.path.exists('note.json'):
+        if os.path.exists('notes.json'):
             with open('notes.json', 'r') as f:
                 notes_data = json.load(f)
                 self.notes = [Note(**note) for note in notes_data]
@@ -111,7 +110,7 @@ class NotesCommand:
             self.notes.append(note)
             print(f"Note '{note.title}' restored from recycle bin.")
         except IndexError:
-            print("Deleted not not found in recycle bin.")
+            print("Deleted note not found in recycle bin.")
 
     def empty_recycle_bin(self):
         """This method allows a user
