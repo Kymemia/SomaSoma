@@ -7,6 +7,7 @@ import json
 import os
 from datetime import datetime, timedelta
 
+
 class Note:
     """This is a class that encapsulates an entire note."""
     def __init__(self, title, content):
@@ -49,8 +50,6 @@ class NotesCommand:
         """This method allows a user to view a specific note's content"""
         try:
             note = self.notes[index - 1]
-            note.title = new_title
-            note.content = new_content
             print(f"Title: {note.title}\nContent: {note.content}")
         except IndexError:
             print("Note not found.")
@@ -58,7 +57,7 @@ class NotesCommand:
     def view_notes(self):
         """This method allows a user to view all their notes"""
         for x, note in enumerate(self.notes, start=1):
-            printf(f"{x}. {note.title}")
+            print(f"{x}. {note.title}")
 
     def save_notes(self):
         """This method allows a user to save all their notes"""
@@ -93,7 +92,7 @@ class NotesCommand:
     def delete_all_notes(self):
         """This method allows a user to delete all their notes
          ~ Notes will be moved to the recycle bin"""
-        confirmation = input("Are you sure you want to delete all notes? Notes will be moved to recycle bin. (y/n): ").strip.lower()
+        confirmation = input("Are you sure you want to delete all notes? Notes will be moved to recycle bin. (y/n): ").strip().lower()
 
         if confirmation == 'y':
             for note in self.notes:
@@ -123,6 +122,23 @@ class NotesCommand:
                 self.recycle_bin.remove((note, delete_time))
                 print(f"Note '{note.title}' permanently deleted after 7 days.")
 
+        confirmation = input("Are you sure you want to delete all notes? Notes will be permanently deleted. (y/n): ").strip().lower()
+        if confirmation == 'y':
+            notes_deleted = len(self.recycle_bin)
+            self.recycle_bin.clear()
+            print(f"note{'s' if notes_deleted != 1 else ''} permanently deleted.")
+        else:
+            print("Recycle bin emptying aborted")
+
+    def view_recycle_bin_notes(self):
+        """This method allows a user
+        to view the deleted notes in the recycle bin"""
+        if not self.recycle_bin:
+            print("Recycle bin is empty.")
+        else:
+            for j, (note, delete_time) in enumerate(self.recycle_bin, start=1):
+                print(f"{j} {note.title} (deleted on {delete_time})")
+                
 
 if __name__ == "__main__":
     app = NotesCommand()
@@ -136,9 +152,10 @@ if __name__ == "__main__":
         print("5. Search Notes")
         print("6. Delete a Note")
         print("7. Delete all Notes")
-        print("8. Restore note from recycle bin")
-        print("9. Empty recycle bin")
-        print("10. Save notes to file")
+        print("8. View recycle bin notes")
+        print("9. Restore note from recycle bin")
+        print("10. Empty recycle bin")
+        print("11. Save notes to file")
         print("0. Exit")
 
 
@@ -167,11 +184,13 @@ if __name__ == "__main__":
         elif choice == '7':
             app.delete_all_notes()
         elif choice == '8':
+            app.view_recycle_bin_notes()
+        elif choice == '9':
             index = int(input("Enter index of note to restore from recycle bin: "))
             app.restore_note_from_recycle_bin(index)
-        elif choice == '9':
-            app.empty_recycle_bin()
         elif choice == '10':
+            app.empty_recycle_bin()
+        elif choice == '11':
             app.save_notes()
         elif choice == '0':
             print("Exiting SomaSoma Console. Goodbye!")
