@@ -1,11 +1,27 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
-"""This is the console module for our website"""
-
+import pyrebase
 import json
 import os
+import urllib.request
 from datetime import datetime, timedelta
 
+# Firebase configuration
+firebaseConfig = {
+    'apiKey': "AIzaSyAZbrMm0lHELEM0uTkEyoSTUk7rTfuVqHs",
+    'authDomain': "fir-ologi.firebaseapp.com",
+    'projectId': "fir-ologi",
+    'storageBucket': "fir-ologi.appspot.com",
+    'messagingSenderId': "691465790967",
+    'appId': "1:691465790967:web:e60ce9f9078d96d2a2faf2",
+    'databaseURL': "https://fir-ologi-default-rtdb.firebaseio.com",
+    'measurementId': "G-MGB84Q7K2F"
+}
+
+# Initialize Firebase
+firebase = pyrebase.initialize_app(firebaseConfig)
+auth = firebase.auth()
+storage = firebase.storage()
 
 class Note:
     """This is a class that encapsulates an entire note."""
@@ -29,14 +45,7 @@ class NotesCommand:
         print(f"Note '{title}' created.")
 
     def edit_note(self, index, new_title, new_content):
-        """This method allows a user to edit a note
-        by accessing the following parameters listed
-        in the brackets
-        self => contains all of a user's notes
-        index => unique position of the particular note to edit
-        new_title => this is the title of the new edited note
-                      (can still be the same title though)
-        new_content => new data that'll ideally be inserted in the note"""
+        """This method allows a user to edit a note"""
         try:
             note = self.notes[index - 1]
             note.title = new_title
@@ -82,8 +91,7 @@ class NotesCommand:
                 self.notes = [Note(**note) for note in notes_data]
 
     def search_notes(self, keyword):
-        """This method allows a user
-        to search their notes based on a keyword"""
+        """This method allows a user to search their notes based on a keyword"""
         results = [note for note in self.notes if keyword.lower() in note.title.lower() or keyword.lower() in note.content.lower()]
         for note in results:
             print(f"Title: {note.title}\nContent: {note.content}\n")
@@ -103,8 +111,7 @@ class NotesCommand:
             print("Doomsday deletion aborted.")
 
     def restore_note_from_recycle_bin(self, index):
-        """This method allows a user to restore
-        a single note from the recycle bin"""
+        """This method allows a user to restore a single note from the recycle bin"""
         try:
             note, delete_time = self.recycle_bin.pop(index - 1)
             self.notes.append(note)
@@ -113,8 +120,7 @@ class NotesCommand:
             print("Deleted note not found in recycle bin.")
 
     def empty_recycle_bin(self):
-        """This method allows a user
-        to delete all the contents from their recycle bin"""
+        """This method allows a user to delete all the contents from their recycle bin"""
         current_time = datetime.now()
         for note, delete_time in self.recycle_bin[:]:
             if (current_time - delete_time) > timedelta(days=7):
@@ -130,20 +136,63 @@ class NotesCommand:
             print("Recycle bin emptying aborted")
 
     def view_recycle_bin_notes(self):
-        """This method allows a user
-        to view the deleted notes in the recycle bin"""
+        """This method allows a user to view the deleted notes in their recycle bin"""
         if not self.recycle_bin:
             print("Recycle bin is empty.")
         else:
             for j, (note, delete_time) in enumerate(self.recycle_bin, start=1):
                 print(f"{j} {note.title} (deleted on {delete_time})")
-                
 
 if __name__ == "__main__":
     app = NotesCommand()
 
+    # Function to log in user
+    def login_user(email, password):
+        try:
+            user = auth.sign_in_with_email_and_password(email, password)
+            print("Successfully logged in!")
+            return user
+        except Exception as e:
+            print(f"Error logging in: {e}")
+            return None
+
+    # Signup a new user
+    def signup_user(email, password, confirmpass):
+        if password == confirmpass:
+            try:
+                auth.create_user_with_email_and_password(email, password)
+                print("SomaSoma Account Creation Successful!")
+                return True
+            except Exception as e:
+                print(f"Error: {e}")
+                return False
+        else:
+            print("Passwords do not match. Try again.")
+            return False
+
+    # Initial signup/login process
+    print("Welcome to SomaSoma Console")
     while True:
-        print("\nWelcome to SomaSoma Console")
+        print("1. Sign up")
+        print("2. Log in")
+        choice = input("Choose an option (1-2): ").strip()
+        
+        if choice == '1':
+            email = input("Enter your email: ")
+            password = input("Enter your password: ")
+            confirmpass = input("Please confirm your password: ")
+            if signup_user(email, password, confirmpass):
+                break
+        elif choice == '2':
+            email = input("Enter your email: ")
+            password = input("Enter your password: ")
+            if login_user(email, password):
+                break
+        else:
+            print("Invalid choice. Please enter 1 or 2.")
+
+    while True:
+        print("\nSomaSoma Console Menu")
         print("1. Create Note")
         print("2. Edit Note")
         print("3. View Note Content")
@@ -155,10 +204,12 @@ if __name__ == "__main__":
         print("9. Restore note from recycle bin")
         print("10. Empty recycle bin")
         print("11. Save notes to file")
+        print("12. Upload note to Firebase storage")
+        print("13. Download note from Firebase storage")
+        print("14. Read note from Firebase storage")
         print("0. Exit")
 
-
-        choice = input("Choose an option (0-10): ").strip()
+        choice = input("Choose an option (0-14): ").strip()
 
         if choice == '1':
             title = input("Enter note title: ")
@@ -191,8 +242,23 @@ if __name__ == "__main__":
             app.empty_recycle_bin()
         elif choice == '11':
             app.save_notes()
+        elif choice == '12':
+            filename = input("Enter the name of the note you want to save: ")
+            cloudfilename = input("How do you want the note stored in the cloud? ")
+            storage.child(cloudfilename).put(filename)
+            print(f"File '{filename}' uploaded as '{cloudfilename}' to Firebase storage.")
+        elif choice == '13':
+            cloudfilename = input("Enter the name of the file you want to download: ")
+            storage.child(cloudfilename).download(cloudfilename, cloudfilename)
+            print(f"File '{cloudfilename}' downloaded from Firebase storage.")
+        elif choice == '14':
+            cloudfilename = input("Enter the name of the file you want to read: ")
+            url = storage.child(cloudfilename).get_url(None)
+            response = urllib.request.urlopen(url)
+            content = response.read().decode('utf-8')
+            print(f"Content of '{cloudfilename}':\n{content}")
         elif choice == '0':
             print("Exiting SomaSoma Console. Goodbye!")
             break
         else:
-            print("Invalid choice. Please enter a number between 0 and 10.")
+            print("Invalid choice. Please enter a number between 0 and 14.")
