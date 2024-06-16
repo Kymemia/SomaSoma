@@ -20,7 +20,11 @@ firebaseConfig = {
 
 # Initialize Firebase
 firebase = pyrebase.initialize_app(firebaseConfig)
+
+# Firebase Authentication
 auth = firebase.auth()
+
+# Firebase Storage
 storage = firebase.storage()
 
 class Note:
@@ -143,34 +147,57 @@ class NotesCommand:
             for j, (note, delete_time) in enumerate(self.recycle_bin, start=1):
                 print(f"{j} {note.title} (deleted on {delete_time})")
 
-if __name__ == "__main__":
-    app = NotesCommand()
-
-    # Function to log in user
-    def login_user(email, password):
+    def upload_note_to_firebase(self, filename, cloudfilename):
+        """This method allows a user to upload a note to Firebase storage"""
         try:
-            user = auth.sign_in_with_email_and_password(email, password)
-            print("Successfully logged in!")
-            return user
+            storage.child(cloudfilename).put(filename)
+            print(f"File '{filename}' uploaded as '{cloudfilename}'.")
         except Exception as e:
-            print(f"Error logging in: {e}")
-            return None
+            print(f"Error uploading file: {e}")
 
-    # Signup a new user
-    def signup_user(email, password, confirmpass):
-        if password == confirmpass:
-            try:
-                auth.create_user_with_email_and_password(email, password)
-                print("SomaSoma Account Creation Successful!")
-                return True
-            except Exception as e:
-                print(f"Error: {e}")
-                return False
-        else:
-            print("Passwords do not match. Try again.")
+    def download_note_from_firebase(self, cloudfilename, localfilename):
+        """This method allows a user to download a note from Firebase storage"""
+        try:
+            storage.child(cloudfilename).download(localfilename)
+            print(f"File '{cloudfilename}' downloaded as '{localfilename}'.")
+        except Exception as e:
+            print(f"Error downloading file: {e}")
+
+    def read_note_from_firebase(self, cloudfilename):
+        """This method allows a user to read a note from Firebase storage"""
+        try:
+            url = storage.child(cloudfilename).get_url(None)
+            f = urllib.request.urlopen(url).read()
+            print(f"Content of '{cloudfilename}':\n{f.decode()}")
+        except Exception as e:
+            print(f"Error reading file: {e}")
+
+# Function to log in user
+def login_user(email, password):
+    try:
+        user = auth.sign_in_with_email_and_password(email, password)
+        print("Successfully logged in!")
+        return user
+    except Exception as e:
+        print(f"Error logging in: {e}")
+        return None
+
+# Signup a new user
+def signup_user(email, password, confirmpass):
+    if password == confirmpass:
+        try:
+            auth.create_user_with_email_and_password(email, password)
+            print("SomaSoma Account Creation Successful!")
+            return True
+        except Exception as e:
+            print(f"Error: {e}")
             return False
+    else:
+        print("Passwords do not match. Try again.")
+        return False
 
-    # Initial signup/login process
+# Initial signup/login process
+def user_authentication():
     print("Welcome to SomaSoma Console")
     while True:
         print("1. Sign up")
@@ -182,15 +209,16 @@ if __name__ == "__main__":
             password = input("Enter your password: ")
             confirmpass = input("Please confirm your password: ")
             if signup_user(email, password, confirmpass):
-                break
+                return
         elif choice == '2':
             email = input("Enter your email: ")
             password = input("Enter your password: ")
             if login_user(email, password):
-                break
+                return
         else:
             print("Invalid choice. Please enter 1 or 2.")
 
+def main_menu(app):
     while True:
         print("\nSomaSoma Console Menu")
         print("1. Create Note")
@@ -213,52 +241,53 @@ if __name__ == "__main__":
 
         if choice == '1':
             title = input("Enter note title: ")
-            content = input("Enter note's content: ")
+            content = input("Enter note content: ")
             app.create_note(title, content)
         elif choice == '2':
-            index = int(input("Enter note index: "))
+            index = int(input("Enter note index to edit: "))
             new_title = input("Enter new title: ")
             new_content = input("Enter new content: ")
             app.edit_note(index, new_title, new_content)
         elif choice == '3':
-            index = int(input("Enter note index: "))
+            index = int(input("Enter note index to view: "))
             app.view_note_content(index)
         elif choice == '4':
             app.view_notes()
         elif choice == '5':
-            keyword = input("Enter keyword to search notes: ")
+            keyword = input("Enter keyword to search: ")
             app.search_notes(keyword)
         elif choice == '6':
-            index = int(input("Enter index of note to delete: "))
+            index = int(input("Enter note index to delete: "))
             app.delete_note(index)
         elif choice == '7':
             app.delete_all_notes()
         elif choice == '8':
             app.view_recycle_bin_notes()
         elif choice == '9':
-            index = int(input("Enter index of note to restore from recycle bin: "))
+            index = int(input("Enter index of note in recycle bin to restore: "))
             app.restore_note_from_recycle_bin(index)
         elif choice == '10':
             app.empty_recycle_bin()
         elif choice == '11':
             app.save_notes()
         elif choice == '12':
-            filename = input("Enter the name of the note you want to save: ")
-            cloudfilename = input("How do you want the note stored in the cloud? ")
-            storage.child(cloudfilename).put(filename)
-            print(f"File '{filename}' uploaded as '{cloudfilename}' to Firebase storage.")
+            filename = input("Enter filename to upload: ")
+            cloudfilename = input("Enter cloud filename: ")
+            app.upload_note_to_firebase(filename, cloudfilename)
         elif choice == '13':
-            cloudfilename = input("Enter the name of the file you want to download: ")
-            storage.child(cloudfilename).download(cloudfilename, cloudfilename)
-            print(f"File '{cloudfilename}' downloaded from Firebase storage.")
+            cloudfilename = input("Enter cloud filename to download: ")
+            localfilename = input("Enter local filename: ")
+            app.download_note_from_firebase(cloudfilename, localfilename)
         elif choice == '14':
-            cloudfilename = input("Enter the name of the file you want to read: ")
-            url = storage.child(cloudfilename).get_url(None)
-            response = urllib.request.urlopen(url)
-            content = response.read().decode('utf-8')
-            print(f"Content of '{cloudfilename}':\n{content}")
+            cloudfilename = input("Enter cloud filename to read: ")
+            app.read_note_from_firebase(cloudfilename)
         elif choice == '0':
             print("Exiting SomaSoma Console. Goodbye!")
             break
         else:
             print("Invalid choice. Please enter a number between 0 and 14.")
+
+if __name__ == "__main__":
+    app = NotesCommand()
+    user_authentication()
+    main_menu(app)
