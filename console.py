@@ -2,6 +2,7 @@
 
 import pyrebase
 import json
+import tempfile
 import os
 import urllib.request
 from datetime import datetime, timedelta
@@ -29,10 +30,12 @@ storage = firebase.storage()
 
 class Note:
     """This is a class that encapsulates an entire note."""
-    def __init__(self, title, content):
+    def __init__(self, title, content, last_edited=None):
         """Initializes title + content of a particular note."""
         self.title = title
         self.content = content
+        self.last_edited = last_edited or datetime.now().isoformat()
+
 
 class NotesCommand:
     """This class contains features for the SomaSoma console"""
@@ -46,15 +49,30 @@ class NotesCommand:
         """This method allows a user to create a note"""
         note = Note(title, content)
         self.notes.append(note)
+        self.notes.sort(key=lambda x: x.last_edited, reverse=True)
         print(f"Note '{title}' created.")
 
-    def edit_note(self, index, new_title, new_content):
+    def edit_note(self, index):
         """This method allows a user to edit a note"""
         try:
             note = self.notes[index - 1]
-            note.title = new_title
+            with tempfile.NamedTemporaryFile(delete=False, mode='w+', suffix=".tmp") as temp_file:
+                temp_file.write(note.content)
+                temp_file.flush()
+                temp_file_name = temp_file.name
+
+            editor = os.environ.get('EDITOR', 'vim')
+            os.system(f'{editor} {temp_file_name}')
+
+            with open(temp_file_name, 'r') as temp_file:
+                new_content = temp_file.read()
+
+            os.remove(temp_file_name)
+
             note.content = new_content
-            print(f"Note '{new_title}' updated.")
+            note.last_edited = datetime.now().isoformat()
+            self.notes.sort(key=lambda x: x.last_edited, reverse=True)
+            print(f"Note '{note.title}' updated.")
         except IndexError:
             print("Note not found")
 
@@ -93,6 +111,7 @@ class NotesCommand:
             with open('notes.json', 'r') as f:
                 notes_data = json.load(f)
                 self.notes = [Note(**note) for note in notes_data]
+                self.notes.sort(key=lambda x: x.last_edited, reverse=True)
 
     def search_notes(self, keyword):
         """This method allows a user to search their notes based on a keyword"""
@@ -119,6 +138,7 @@ class NotesCommand:
         try:
             note, delete_time = self.recycle_bin.pop(index - 1)
             self.notes.append(note)
+            self.notes.sort(key=lambda x: x.last_edited, reverse=True)
             print(f"Note '{note.title}' restored from recycle bin.")
         except IndexError:
             print("Deleted note not found in recycle bin.")
@@ -245,9 +265,7 @@ def main_menu(app):
             app.create_note(title, content)
         elif choice == '2':
             index = int(input("Enter note index to edit: "))
-            new_title = input("Enter new title: ")
-            new_content = input("Enter new content: ")
-            app.edit_note(index, new_title, new_content)
+            app.edit_note(index)
         elif choice == '3':
             index = int(input("Enter note index to view: "))
             app.view_note_content(index)
