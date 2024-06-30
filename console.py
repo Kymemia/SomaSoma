@@ -6,6 +6,8 @@ import tempfile
 import os
 import urllib.request
 from datetime import datetime, timedelta
+import redis
+from googleapiclient.discovery import build
 
 # Firebase configuration
 firebaseConfig = {
@@ -28,6 +30,54 @@ auth = firebase.auth()
 # Firebase Storage
 storage = firebase.storage()
 
+# Initialize Redis
+redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
+
+
+class YouTubeAPI:
+    """This is a class that defines some
+    of the YouTube features necessary for our app"""
+    def __init__(self, api_key):
+        """Initializes youtube + its api_key"""
+        self.api_key = api_key
+        self.youtube = build('youtube', 'v3', developerKey=self.api_key)
+
+    def search_videos(self, query, max_results=5):
+        """This method defines a user's YT search"""
+        request = self.youtube.search().list(
+                part="snippet",
+                q=query,
+                type="video",
+                maxResults=max_results
+                )
+        response = request.execute()
+
+        videos = []
+        for item in response.get('items', []):
+            video = {
+                    'title': item['snippet']['title'],
+                    'description': item['snippet']['description'],
+                    'url':f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+                    }
+            videos.append(video)
+
+        return videos
+
+    def get_video_details(self, video_id):
+        """This method gets a video's details"""
+        request = self.youtube.videos().list(
+                part="snippet,contentDetails,statistics",
+                id=video_id
+                )
+        response = request.execute()
+
+        if response['items']:
+            return response['items'][0]
+        else:
+            return None
+
+
+
 class Note:
     """This is a class that encapsulates an entire note."""
     def __init__(self, title, content, last_edited=None):
@@ -44,6 +94,24 @@ class NotesCommand:
         self.notes = []
         self.load_notes()
         self.recycle_bin = []
+        self.youtube_api = YouTubeAPI(api_key="AIzaSyBUScgcVKRusXcWi0XPDw5M_JlRX71k9mU")
+
+    def search_youtube_videos(self, query):
+        """This method searches YT videos based on a user's query"""
+        videos = self.youtube_api.search_videos(query)
+        for video in videos:
+            print(f"Title: {video['title']}\nURL: {video['url']}\nDescription: {video['description']}\n")
+
+
+    def view_youtube_video_details(self, video_id):
+        """This method displays a searched video's details"""
+        video = self.youtube_api.get_video_details(video_id)
+        if video:
+            snippet = video['snippet']
+            stats = video['statistics']
+            print(f"Title: {snippet['title']}\nDescription: {snippet['description']}\nViews: {stats['viewCount']}\nLikes: {stats['likeCount']}\n")
+        else:
+            print("Video not found")
 
     def create_note(self, title, content):
         """This method allows a user to create a note"""
@@ -91,8 +159,12 @@ class NotesCommand:
 
     def save_notes(self):
         """This method allows a user to save all their notes"""
-        with open('notes.json', 'w') as f:
-            json.dump([note.__dict__ for note in self.notes], f)
+        for note in self.notes:
+            filename = f"{note.title}.txt"
+            filename = "".join(x for x in filename if (x.isalnum() or x in "._- ")).strip()
+            with open(filename, 'w') as f:
+                f.write(note.content)
+            print(f"Note '{note.title}' saved as '{filename}'")
 
     def delete_note(self, index):
         """This method allows a user to delete a single note.
@@ -107,11 +179,16 @@ class NotesCommand:
 
     def load_notes(self):
         """This method allows a user to load their notes"""
-        if os.path.exists('notes.json'):
-            with open('notes.json', 'r') as f:
-                notes_data = json.load(f)
-                self.notes = [Note(**note) for note in notes_data]
-                self.notes.sort(key=lambda x: x.last_edited, reverse=True)
+        for filename in os.listdir():
+            if filename.endswith(".txt"):
+                with open(filename, 'r') as f:
+                    content = f.read()
+                title = filename[:-4]
+                last_edited = datetime.fromtimestamp(os.path.getmtime(filename)).isoformat()
+                note = Note(title, content, last_edited)
+                self.notes.append(note)
+        self.notes.sort(key=lambda x: x.last_edited, reverse=True)
+        print("\nNotes loaded from text files.")
 
     def search_notes(self, keyword):
         """This method allows a user to search their notes based on a keyword"""
@@ -169,6 +246,10 @@ class NotesCommand:
 
     def upload_note_to_firebase(self, filename, cloudfilename):
         """This method allows a user to upload a note to Firebase storage"""
+        import os
+        if not os.path.isfile(filename):
+            print(f"File '{filename}' not found in the current directory: {os.getcwd()}")
+            return
         try:
             storage.child(cloudfilename).put(filename)
             print(f"File '{filename}' uploaded as '{cloudfilename}'.")
@@ -197,10 +278,22 @@ def login_user(email, password):
     try:
         user = auth.sign_in_with_email_and_password(email, password)
         print("Successfully logged in!")
-        return user
+        session_id = user['idToken']
+        redis_client.set(session_id, json.dumps(user))
+        return session_id
     except Exception as e:
         print(f"Error logging in: {e}")
         return None
+
+# This function gets a user session
+def get_user_session(session_id):
+    session_data = redis_client.get(session_id)
+    if session_data:
+        return json.loads(session_data)
+    else:
+        print("Session has expired.")
+        return None
+
 
 # Signup a new user
 def signup_user(email, password, confirmpass):
@@ -233,12 +326,19 @@ def user_authentication():
         elif choice == '2':
             email = input("Enter your email: ")
             password = input("Enter your password: ")
-            if login_user(email, password):
-                return
+            session_id = login_user(email, password)
+            if session_id:
+                return session_id
         else:
             print("Invalid choice. Please enter 1 or 2.")
 
-def main_menu(app):
+def main_menu(app, session_id):
+    user = get_user_session(session_id)
+    if not user:
+        print("Session expired. Please log in again.")
+        return
+
+
     while True:
         print("\nSomaSoma Console Menu")
         print("1. Create Note")
@@ -251,13 +351,15 @@ def main_menu(app):
         print("8. View recycle bin notes")
         print("9. Restore note from recycle bin")
         print("10. Empty recycle bin")
-        print("11. Save notes to file")
+        print("11. Save notes to text files")
         print("12. Upload note to Firebase storage")
         print("13. Download note from Firebase storage")
         print("14. Read note from Firebase storage")
+        print("15. Search YouTube Videos")
+        print("16. View YouTube Video details")
         print("0. Exit")
 
-        choice = input("Choose an option (0-14): ").strip()
+        choice = input("Choose an option (0-16): ").strip()
 
         if choice == '1':
             title = input("Enter note title: ")
@@ -299,13 +401,20 @@ def main_menu(app):
         elif choice == '14':
             cloudfilename = input("Enter cloud filename to read: ")
             app.read_note_from_firebase(cloudfilename)
+        elif choice == '15':
+            query = input("Search YouTube: ")
+            app.search_youtube_videos(query)
+        elif choice == '16':
+            video_id = input("Enter video ID: ")
+            app.view_youtube_video_details(video_id)
         elif choice == '0':
             print("Exiting SomaSoma Console. Goodbye!")
             break
         else:
             print("Invalid choice. Please enter a number between 0 and 14.")
 
+
 if __name__ == "__main__":
     app = NotesCommand()
-    user_authentication()
-    main_menu(app)
+    session_id = user_authentication()
+    main_menu(app, session_id)
